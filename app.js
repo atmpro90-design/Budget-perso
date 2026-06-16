@@ -24,7 +24,15 @@ const MONTH_NAMES = [
   'Janvier','Février','Mars','Avril','Mai','Juin',
   'Juillet','Août','Septembre','Octobre','Novembre','Décembre'
 ];
-
+// Fusionne catégories par défaut + catégories personnalisées
+function getCategories(data) {
+  const custom = (data.settings?.customCategories || []).map(c => ({
+    key:    c.key,
+    icon:   c.icon || '📙',
+    custom: true,
+  }));
+  return [...CATEGORIES, ...custom];
+}
 // ─── ÉTAT GLOBAL ──────────────────────────────────────
 let state = {
   currentMonthKey: getTodayKey(),   // mois affiché dans l'onglet "Mois"
@@ -55,7 +63,9 @@ function defaultData() {
   return {
     settings: {
       annualSavingsGoal: 0,
-      currency: '€',
+      currency:         '€',
+      startingBalance:  0,
+      customCategories: [],
     },
     months: {},
   };
@@ -115,7 +125,7 @@ function ensureMonth(data, key) {
     data.months[key] = defaultMonthData();
   }
   // S'assurer que toutes les catégories existent (robustesse)
-  CATEGORIES.forEach(c => {
+  getCategories(data).forEach(c => {
     if (!data.months[key].expenses[c.key]) {
       data.months[key].expenses[c.key] = { planned: 0, actual: 0 };
     }
@@ -131,19 +141,28 @@ function calcTotalRevenues(monthData) {
 }
 
 function calcTotalPlanned(monthData) {
-  return CATEGORIES.reduce((s, c) => {
-    return s + (parseFloat(monthData.expenses[c.key]?.planned) || 0);
-  }, 0);
+  return Object.values(monthData.expenses || {})
+    .reduce((s, e) => s + (parseFloat(e?.planned) || 0), 0);
 }
 
 function calcTotalActual(monthData) {
-  return CATEGORIES.reduce((s, c) => {
-    return s + (parseFloat(monthData.expenses[c.key]?.actual) || 0);
-  }, 0);
+  return Object.values(monthData.expenses || {})
+    .reduce((s, e) => s + (parseFloat(e?.actual) || 0), 0);
 }
 
 function calcSavingsActual(monthData) {
   return parseFloat(monthData.expenses['Épargne placée']?.actual) || 0;
+}
+
+// Solde cumulé de tous les mois AVANT la clé donnée (toutes années)
+function calcCarryOver(data, key) {
+  const start = parseFloat(data.settings?.startingBalance) || 0;
+  return Object.keys(data.months)
+    .filter(k => k < key)
+    .reduce((bal, k) => {
+      const md = data.months[k];
+      return bal + calcTotalRevenues(md) - calcTotalActual(md);
+    }, start);
 }
 
 function fmt(n, currency = '€') {
@@ -365,11 +384,12 @@ function renderVariableList(variables, cur) {
 }
 
 function renderExpenseRows(md, cur) {
+  const data      = loadData();
   const container = document.getElementById('expenseRows');
   container.innerHTML = '';
 
-  CATEGORIES.forEach(cat => {
-    const exp = md.expenses[cat.key] || { planned: 0, actual: 0 };
+  getCategories(data).forEach(cat => {
+    const exp     = md.expenses[cat.key] || { planned: 0, actual: 0 };
     const planned = parseFloat(exp.planned) || 0;
     const actual  = parseFloat(exp.actual)  || 0;
     const ecart   = planned - actual;
@@ -384,30 +404,41 @@ function renderExpenseRows(md, cur) {
       ecartTxt   = (ecart >= 0 ? '+' : '') + formatNum(ecart);
     }
 
+    const delBtn = cat.custom
+      ? `<button class="btn-delete-cat" data-cat-key="${escHtml(cat.key)}" title="Supprimer la catégorie">✕</button>`
+      : '';
+
     row.innerHTML = `
       <div class="expense-cat-name">
         <span class="expense-cat-icon">${cat.icon}</span>
-        <span>${cat.key}</span>
+        <span>${escHtml(cat.key)}</span>
+        ${delBtn}
       </div>
       <input
         type="number" min="0" step="0.01"
         class="input-amount"
-        data-cat="${cat.key}" data-field="planned"
+        data-cat="${escHtml(cat.key)}" data-field="planned"
         value="${planned || ''}" placeholder="0"
       />
       <input
         type="number" min="0" step="0.01"
         class="input-amount"
-        data-cat="${cat.key}" data-field="actual"
+        data-cat="${escHtml(cat.key)}" data-field="actual"
         value="${actual || ''}" placeholder="0"
       />
-      <span class="ecart-badge ${ecartClass}" data-cat="${cat.key}-ecart">${ecartTxt}</span>
+      <span class="ecart-badge ${ecartClass}" data-cat="${escHtml(cat.key)}-ecart">${ecartTxt}</span>
     `;
 
     // Mise à jour en temps réel à la saisie
     row.querySelectorAll('input').forEach(input => {
       input.addEventListener('input', () => onExpenseInput(input, cur));
     });
+
+    // Suppression catégorie personnalisée
+    if (cat.custom) {
+      const btn = row.querySelector('.btn-delete-cat');
+      if (btn) btn.addEventListener('click', () => deleteCustomCategory(btn.dataset.catKey));
+    }
 
     container.appendChild(row);
   });
@@ -470,6 +501,22 @@ function updateMonthTotals(md, cur) {
   const balEl = document.getElementById('monthBalance');
   balEl.textContent = fmt(balance, cur);
   balEl.className   = `total-value ${balance >= 0 ? 'positive' : 'negative'}`;
+
+  // Solde reporté (cumul des mois précédents) + solde cumulé
+  const carryOver  = calcCarryOver(data, state.currentMonthKey);
+  const cumulative = carryOver + balance;
+
+  const coEl = document.getElementById('monthCarryOver');
+  if (coEl) {
+    coEl.textContent = fmt(carryOver, cur);
+    coEl.className   = `total-value ${carryOver >= 0 ? 'positive' : 'negative'}`;
+  }
+
+  const cumEl = document.getElementById('monthCumulative');
+  if (cumEl) {
+    cumEl.textContent = fmt(cumulative, cur);
+    cumEl.className   = `total-value ${cumulative >= 0 ? 'positive' : 'negative'}`;
+  }
 }
 
 function saveMonth() {
@@ -573,6 +620,10 @@ function renderHistory(year) {
   body.innerHTML = '';
   foot.innerHTML = '';
 
+  // Solde reporté depuis avant cette année
+  const yearStartKey    = buildKey(year, 0);
+  let cumulativeBalance = calcCarryOver(data, yearStartKey);
+
   let totRev = 0, totExp = 0, totBal = 0, totSav = 0;
 
   for (let m = 0; m < 12; m++) {
@@ -584,6 +635,7 @@ function renderHistory(year) {
     const bal = rev - exp;
     const sav = md ? calcSavingsActual(md) : 0;
 
+    cumulativeBalance += bal;
     totRev += rev;
     totExp += exp;
     totBal += bal;
@@ -599,6 +651,7 @@ function renderHistory(year) {
       <td class="${exp > 0 ? 'negative' : ''}">${fmt(exp, cur)}</td>
       <td class="${bal >= 0 ? 'positive' : 'negative'}">${fmt(bal, cur)}</td>
       <td class="${sav > 0 ? 'positive' : ''}">${fmt(sav, cur)}</td>
+      <td class="${cumulativeBalance >= 0 ? 'positive' : 'negative'}"><strong>${fmt(cumulativeBalance, cur)}</strong></td>
     `;
     body.appendChild(tr);
   }
@@ -611,6 +664,7 @@ function renderHistory(year) {
       <td class="${totExp > 0 ? 'negative' : ''}">${fmt(totExp, cur)}</td>
       <td class="${totBal >= 0 ? 'positive' : 'negative'}">${fmt(totBal, cur)}</td>
       <td class="${totSav > 0 ? 'positive' : ''}">${fmt(totSav, cur)}</td>
+      <td class="${cumulativeBalance >= 0 ? 'positive' : 'negative'}">${fmt(cumulativeBalance, cur)}</td>
     </tr>
   `;
 }
@@ -729,6 +783,52 @@ function exportJSON() {
   showToast('✓ Export JSON téléchargé', 'success');
 }
 
+// ─── Catégories personnalisées ─────────────────────────
+function openCategoryModal() {
+  document.getElementById('modalCatIcon').value = '';
+  document.getElementById('modalCatName').value = '';
+  document.getElementById('modalCategory').classList.remove('hidden');
+  document.getElementById('modalCatName').focus();
+}
+
+function closeCategoryModal() {
+  document.getElementById('modalCategory').classList.add('hidden');
+}
+
+function confirmCategory() {
+  const icon = document.getElementById('modalCatIcon').value.trim() || '📙';
+  const name = document.getElementById('modalCatName').value.trim();
+
+  if (!name) {
+    showToast('Veuillez saisir un nom de catégorie', 'error');
+    document.getElementById('modalCatName').focus();
+    return;
+  }
+
+  const data = loadData();
+  if (!data.settings.customCategories) data.settings.customCategories = [];
+
+  if (getCategories(data).some(c => c.key.toLowerCase() === name.toLowerCase())) {
+    showToast('Cette catégorie existe déjà', 'error');
+    return;
+  }
+
+  data.settings.customCategories.push({ key: name, icon });
+  saveData(data);
+  closeCategoryModal();
+  renderMonth();
+  showToast(`✓ Catégorie « ${name} » créée`, 'success');
+}
+
+function deleteCustomCategory(key) {
+  const data = loadData();
+  data.settings.customCategories = (data.settings.customCategories || [])
+    .filter(c => c.key !== key);
+  saveData(data);
+  renderMonth();
+  showToast(`Catégorie « ${key} » supprimée`, 'success');
+}
+
 // ─── Sécurité : échapper le HTML ──────────────────────
 function escHtml(str) {
   return String(str)
@@ -785,6 +885,17 @@ function init() {
 
   // Objectif épargne
   document.getElementById('btnSaveGoal').addEventListener('click', saveGoal);
+
+  // Catégories personnalisées — modal
+  document.getElementById('btnAddCategory').addEventListener('click', openCategoryModal);
+  document.getElementById('modalCatCancel').addEventListener('click', closeCategoryModal);
+  document.getElementById('modalCatConfirm').addEventListener('click', confirmCategory);
+  document.getElementById('modalCategory').addEventListener('click', e => {
+    if (e.target === document.getElementById('modalCategory')) closeCategoryModal();
+  });
+  document.getElementById('modalCatName').addEventListener('keydown', e => {
+    if (e.key === 'Enter') confirmCategory();
+  });
 
   // Filtre historique
   document.getElementById('filterYear').addEventListener('change', e => {
