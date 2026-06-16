@@ -89,6 +89,7 @@
       <div class="card">
         <div class="card-header">
           <h3>💸 Dépenses par catégorie</h3>
+          <button id="btnAddCategory" class="btn-add-cat">+ Catégorie</button>
         </div>
 
         <div class="expense-table-header">
@@ -107,6 +108,14 @@
         <div class="total-row highlight">
           <span>Solde du mois</span>
           <span id="monthBalance" class="total-value">0 €</span>
+        </div>
+        <div class="total-row report">
+          <span>📥 Solde reporté</span>
+          <span id="monthCarryOver" class="total-value neutral">0 €</span>
+        </div>
+        <div class="total-row cumulative">
+          <span>💰 Solde cumulé</span>
+          <span id="monthCumulative" class="total-value">0 €</span>
         </div>
       </div>
 
@@ -131,6 +140,7 @@
               <th>Dépenses</th>
               <th>Solde</th>
               <th>Épargne</th>
+              <th>Cumulé</th>
             </tr>
           </thead>
           <tbody id="historyTableBody"></tbody>
@@ -239,6 +249,25 @@
       <div class="modal-actions">
         <button id="modalVarCancel" class="btn-secondary">Annuler</button>
         <button id="modalVarConfirm" class="btn-primary">Ajouter</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== MODAL : Catégorie personnalisée ===== -->
+  <div id="modalCategory" class="modal-overlay hidden">
+    <div class="modal-box">
+      <h3 class="modal-title">Nouvelle catégorie</h3>
+      <div class="form-group">
+        <label>Emoji (optionnel)</label>
+        <input type="text" id="modalCatIcon" class="input-text" placeholder="Ex : 🐶" maxlength="4" style="width:90px" />
+      </div>
+      <div class="form-group">
+        <label>Nom de la catégorie</label>
+        <input type="text" id="modalCatName" class="input-text" placeholder="Ex : Animaux, Vacances…" maxlength="40" />
+      </div>
+      <div class="modal-actions">
+        <button id="modalCatCancel" class="btn-secondary">Annuler</button>
+        <button id="modalCatConfirm" class="btn-primary">Créer</button>
       </div>
     </div>
   </div>
