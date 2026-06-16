@@ -440,6 +440,22 @@ body {
   font-size: 1rem;
 }
 
+.total-row.report {
+  padding-top: 8px;
+  margin-top: 2px;
+  border-top: 1px solid var(--gray-border);
+  font-size: .88rem;
+  opacity: .8;
+}
+
+.total-row.cumulative {
+  border-top: 2.5px solid var(--navy);
+  padding-top: 10px;
+  margin-top: 6px;
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+
 .total-value { font-size: 1rem; font-weight: 800; }
 
 /* ─── COLOURS ───────────────────────────────────────── */
@@ -462,6 +478,35 @@ body {
   transition: background var(--transition);
 }
 .btn-add:hover { background: #D6E9FF; }
+
+.btn-add-cat {
+  background: var(--blue-light);
+  border: 1.5px solid var(--blue);
+  color: var(--blue);
+  border-radius: var(--radius-sm);
+  padding: 5px 10px;
+  font-size: .78rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background var(--transition);
+}
+.btn-add-cat:hover { background: #D6E9FF; }
+
+.btn-delete-cat {
+  background: none;
+  border: none;
+  color: var(--gray-text);
+  font-size: .78rem;
+  cursor: pointer;
+  padding: 2px 5px;
+  border-radius: 4px;
+  transition: color var(--transition), background var(--transition);
+  flex-shrink: 0;
+  margin-left: auto;
+}
+.btn-delete-cat:hover { color: var(--red); background: var(--red-bg); }
 
 .btn-primary {
   background: var(--blue);
