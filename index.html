@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Budget Personnel</title>
+  <link rel="stylesheet" href="style.css" />
+  <!-- Chart.js via CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+  <!-- ===== HEADER ===== -->
+  <header class="app-header">
+    <h1 class="app-title">💼 Budget Personnel</h1>
+    <div class="header-actions">
+      <span id="currentMonthLabel" class="month-badge"></span>
+      <button id="btnExport" class="btn-icon" title="Exporter JSON">⬇ Export</button>
+    </div>
+  </header>
+
+  <!-- ===== MAIN CONTENT ===== -->
+  <main class="app-main">
+
+    <!-- ── TAB 1 : TABLEAU DE BORD ── -->
+    <section id="tab-dashboard" class="tab-content active">
+      <h2 class="section-title">Tableau de bord <span id="dashboardYear"></span></h2>
+
+      <!-- KPI Cards -->
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <span class="kpi-label">Revenus annuels</span>
+          <span id="kpiRevenues" class="kpi-value positive">0 €</span>
+        </div>
+        <div class="kpi-card">
+          <span class="kpi-label">Dépenses annuelles</span>
+          <span id="kpiExpenses" class="kpi-value negative">0 €</span>
+        </div>
+        <div class="kpi-card">
+          <span class="kpi-label">Solde net</span>
+          <span id="kpiBalance" class="kpi-value">0 €</span>
+        </div>
+        <div class="kpi-card">
+          <span class="kpi-label">Taux d'épargne</span>
+          <span id="kpiSavingsRate" class="kpi-value">0 %</span>
+        </div>
+      </div>
+
+      <!-- Chart Prévisionnel vs Réel -->
+      <div class="chart-card">
+        <h3 class="chart-title">Prévisionnel VS Réel — 12 mois</h3>
+        <div class="chart-wrapper">
+          <canvas id="chartDashboard"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── TAB 2 : MOIS EN COURS ── -->
+    <section id="tab-month" class="tab-content">
+
+      <!-- Month navigator -->
+      <div class="month-nav">
+        <button id="btnPrevMonth" class="btn-nav">&#8249;</button>
+        <h2 id="monthNavTitle" class="month-nav-title"></h2>
+        <button id="btnNextMonth" class="btn-nav">&#8250;</button>
+      </div>
+
+      <!-- Revenus -->
+      <div class="card">
+        <div class="card-header">
+          <h3>💰 Revenus</h3>
+        </div>
+        <div class="form-row">
+          <label>Salaire net fixe</label>
+          <input type="number" id="inputSalary" class="input-amount" placeholder="0" min="0" step="0.01" />
+        </div>
+
+        <h4 class="sub-heading">Revenus variables</h4>
+        <div id="variableRevenuesList"></div>
+        <button id="btnAddVariable" class="btn-add">+ Ajouter un revenu variable</button>
+
+        <div class="total-row">
+          <span>Total revenus</span>
+          <span id="totalRevenues" class="total-value positive">0 €</span>
+        </div>
+      </div>
+
+      <!-- Dépenses -->
+      <div class="card">
+        <div class="card-header">
+          <h3>💸 Dépenses par catégorie</h3>
+        </div>
+
+        <div class="expense-table-header">
+          <span class="col-cat">Catégorie</span>
+          <span class="col-num">Prévu</span>
+          <span class="col-num">Réel</span>
+          <span class="col-num">Écart</span>
+        </div>
+
+        <div id="expenseRows"></div>
+
+        <div class="total-row">
+          <span>Total dépenses</span>
+          <span id="totalExpenses" class="total-value negative">0 €</span>
+        </div>
+        <div class="total-row highlight">
+          <span>Solde du mois</span>
+          <span id="monthBalance" class="total-value">0 €</span>
+        </div>
+      </div>
+
+      <button id="btnSaveMonth" class="btn-primary btn-full">💾 Sauvegarder le mois</button>
+    </section>
+
+    <!-- ── TAB 3 : HISTORIQUE ── -->
+    <section id="tab-history" class="tab-content">
+      <h2 class="section-title">Historique annuel</h2>
+
+      <div class="filter-row">
+        <label for="filterYear">Année :</label>
+        <select id="filterYear" class="select-filter"></select>
+      </div>
+
+      <div class="history-table-wrapper">
+        <table class="history-table">
+          <thead>
+            <tr>
+              <th>Mois</th>
+              <th>Revenus</th>
+              <th>Dépenses</th>
+              <th>Solde</th>
+              <th>Épargne</th>
+            </tr>
+          </thead>
+          <tbody id="historyTableBody"></tbody>
+          <tfoot id="historyTableFoot"></tfoot>
+        </table>
+      </div>
+    </section>
+
+    <!-- ── TAB 4 : ÉPARGNE ── -->
+    <section id="tab-savings" class="tab-content">
+      <h2 class="section-title">🎯 Objectif Épargne</h2>
+
+      <!-- Objectif -->
+      <div class="card">
+        <div class="form-row">
+          <label>Objectif annuel (€)</label>
+          <input type="number" id="inputSavingsGoal" class="input-amount" placeholder="5000" min="0" step="100" />
+        </div>
+        <button id="btnSaveGoal" class="btn-primary" style="margin-top:12px">Enregistrer l'objectif</button>
+      </div>
+
+      <!-- Progression -->
+      <div class="card">
+        <h3 class="card-section-title">Progression <span id="savingsYear"></span></h3>
+
+        <div class="savings-kpi-grid">
+          <div class="kpi-card">
+            <span class="kpi-label">Objectif</span>
+            <span id="savingsGoalDisplay" class="kpi-value">0 €</span>
+          </div>
+          <div class="kpi-card">
+            <span class="kpi-label">Cumulé</span>
+            <span id="savingsCumulated" class="kpi-value positive">0 €</span>
+          </div>
+          <div class="kpi-card">
+            <span class="kpi-label">Projection fin d'année</span>
+            <span id="savingsProjection" class="kpi-value">0 €</span>
+          </div>
+          <div class="kpi-card">
+            <span class="kpi-label">Reste à atteindre</span>
+            <span id="savingsRemaining" class="kpi-value">0 €</span>
+          </div>
+        </div>
+
+        <!-- Barre de progression -->
+        <div class="progress-container">
+          <div class="progress-labels">
+            <span id="progressPercent">0 %</span>
+            <span id="progressGoalLabel">Objectif : 0 €</span>
+          </div>
+          <div class="progress-bar-track">
+            <div id="progressBarFill" class="progress-bar-fill" style="width:0%"></div>
+          </div>
+        </div>
+
+        <!-- Tableau mensuel épargne -->
+        <div class="savings-table-wrapper">
+          <table class="history-table">
+            <thead>
+              <tr>
+                <th>Mois</th>
+                <th>Épargne placée</th>
+                <th>Cumulé</th>
+              </tr>
+            </thead>
+            <tbody id="savingsTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ===== BOTTOM NAV (mobile) ===== -->
+  <nav class="bottom-nav">
+    <button class="nav-btn active" data-tab="tab-dashboard">
+      <span class="nav-icon">🏠</span>
+      <span class="nav-label">Tableau de bord</span>
+    </button>
+    <button class="nav-btn" data-tab="tab-month">
+      <span class="nav-icon">📅</span>
+      <span class="nav-label">Mois en cours</span>
+    </button>
+    <button class="nav-btn" data-tab="tab-history">
+      <span class="nav-icon">📊</span>
+      <span class="nav-label">Historique</span>
+    </button>
+    <button class="nav-btn" data-tab="tab-savings">
+      <span class="nav-icon">🎯</span>
+      <span class="nav-label">Épargne</span>
+    </button>
+  </nav>
+
+  <!-- ===== MODAL : Revenu variable ===== -->
+  <div id="modalVariable" class="modal-overlay hidden">
+    <div class="modal-box">
+      <h3 class="modal-title">Revenu variable</h3>
+      <div class="form-group">
+        <label>Libellé</label>
+        <input type="text" id="modalVarLabel" class="input-text" placeholder="Ex : Prime, Freelance…" maxlength="60" />
+      </div>
+      <div class="form-group">
+        <label>Montant (€)</label>
+        <input type="number" id="modalVarAmount" class="input-amount" placeholder="0" min="0" step="0.01" />
+      </div>
+      <div class="modal-actions">
+        <button id="modalVarCancel" class="btn-secondary">Annuler</button>
+        <button id="modalVarConfirm" class="btn-primary">Ajouter</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== TOAST ===== -->
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
