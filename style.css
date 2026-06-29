@@ -759,6 +759,124 @@ body {
 .toast.success { background: var(--green); }
 .toast.error   { background: var(--red);   }
 
+/* ─── TRANSACTIONS ──────────────────────────────────── */
+.tx-count-badge {
+  font-size: .75rem;
+  font-weight: 700;
+  color: var(--gray-text);
+  background: var(--gray-bg);
+  border: 1px solid var(--gray-border);
+  border-radius: 20px;
+  padding: 2px 10px;
+  white-space: nowrap;
+}
+
+.tx-entry-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.tx-row-top,
+.tx-row-bottom {
+  display: flex;
+  gap: 8px;
+}
+
+.tx-amount {
+  width: 110px;
+  flex-shrink: 0;
+  font-size: 1rem !important;
+  font-weight: 800 !important;
+}
+
+.tx-select {
+  flex: 1;
+  min-width: 0;
+}
+
+.tx-date {
+  flex: 1;
+  min-width: 0;
+}
+
+.tx-submit {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* Liste des transactions */
+.tx-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--gray-border);
+}
+.tx-item:last-child { border-bottom: none; }
+
+.tx-item-icon { font-size: 1.1rem; flex-shrink: 0; }
+
+.tx-item-info {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.tx-item-cat {
+  font-size: .85rem;
+  font-weight: 700;
+  color: var(--navy);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tx-item-label {
+  font-size: .75rem;
+  color: var(--gray-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tx-item-date {
+  font-size: .75rem;
+  color: var(--gray-text);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.tx-item-amount {
+  font-size: .9rem;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
+.tx-empty {
+  font-size: .82rem;
+  color: var(--gray-text);
+  padding: 10px 0 4px;
+  text-align: center;
+}
+
+/* Colonne "Réel" en lecture seule (calculée depuis les transactions) */
+.actual-display {
+  display: block;
+  width: 100%;
+  text-align: right;
+  font-size: .82rem;
+  font-weight: 800;
+  color: var(--navy);
+  padding: 6px 7px;
+  background: var(--gray-bg);
+  border-radius: var(--radius-sm);
+  border: 1.5px solid transparent;
+  line-height: 1.4;
+}
+
 /* ─── RESPONSIVE — tablette et desktop ─────────────── */
 @media (min-width: 640px) {
   .app-main { padding: 20px 20px 0; }
