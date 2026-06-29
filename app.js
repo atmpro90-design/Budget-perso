@@ -117,6 +117,7 @@ function defaultMonthData() {
       variables: [],
     },
     expenses,
+    transactions: [],
   };
 }
 
@@ -130,6 +131,22 @@ function ensureMonth(data, key) {
       data.months[key].expenses[c.key] = { planned: 0, actual: 0 };
     }
   });
+  // Migration : convertir les anciennes valeurs "actual" en transactions
+  if (!data.months[key].transactions) {
+    data.months[key].transactions = [];
+    Object.entries(data.months[key].expenses).forEach(([cat, vals]) => {
+      const actual = parseFloat(vals.actual) || 0;
+      if (actual > 0) {
+        data.months[key].transactions.push({
+          id:       `tx_legacy_${cat}_${key}`,
+          date:     '',
+          label:    'Importé',
+          category: cat,
+          amount:   actual,
+        });
+      }
+    });
+  }
   return data.months[key];
 }
 
@@ -146,12 +163,25 @@ function calcTotalPlanned(monthData) {
 }
 
 function calcTotalActual(monthData) {
+  if (monthData.transactions) {
+    return monthData.transactions.reduce((s, tx) => s + (parseFloat(tx.amount) || 0), 0);
+  }
+  // Fallback legacy (données sans transactions)
   return Object.values(monthData.expenses || {})
     .reduce((s, e) => s + (parseFloat(e?.actual) || 0), 0);
 }
 
 function calcSavingsActual(monthData) {
-  return parseFloat(monthData.expenses['Épargne placée']?.actual) || 0;
+  return calcActualForCategory(monthData, 'Épargne placée');
+}
+
+function calcActualForCategory(monthData, catKey) {
+  if (monthData.transactions) {
+    return monthData.transactions
+      .filter(tx => tx.category === catKey)
+      .reduce((s, tx) => s + (parseFloat(tx.amount) || 0), 0);
+  }
+  return parseFloat(monthData.expenses?.[catKey]?.actual) || 0;
 }
 
 // Solde cumulé de tous les mois AVANT la clé donnée (toutes années)
@@ -350,8 +380,14 @@ function renderMonth() {
   // Revenus variables
   renderVariableList(md.revenues.variables, cur);
 
-  // Lignes de dépenses
+  // Saisie transactions — peupler le select de catégories
+  renderTransactionEntry(data);
+
+  // Lignes de dépenses (planned + actual calculé depuis les transactions)
   renderExpenseRows(md, cur);
+
+  // Liste des transactions du mois
+  renderTransactionList(md, cur);
 
   // Totaux
   updateMonthTotals(md, cur);
@@ -391,7 +427,7 @@ function renderExpenseRows(md, cur) {
   getCategories(data).forEach(cat => {
     const exp     = md.expenses[cat.key] || { planned: 0, actual: 0 };
     const planned = parseFloat(exp.planned) || 0;
-    const actual  = parseFloat(exp.actual)  || 0;
+    const actual  = calcActualForCategory(md, cat.key);
     const ecart   = planned - actual;
 
     const row = document.createElement('div');
@@ -420,12 +456,7 @@ function renderExpenseRows(md, cur) {
         data-cat="${escHtml(cat.key)}" data-field="planned"
         value="${planned || ''}" placeholder="0"
       />
-      <input
-        type="number" min="0" step="0.01"
-        class="input-amount"
-        data-cat="${escHtml(cat.key)}" data-field="actual"
-        value="${actual || ''}" placeholder="0"
-      />
+      <span class="actual-display" data-cat-actual="${escHtml(cat.key)}">${formatNum(actual)}</span>
       <span class="ecart-badge ${ecartClass}" data-cat="${escHtml(cat.key)}-ecart">${ecartTxt}</span>
     `;
 
@@ -448,22 +479,22 @@ function onExpenseInput(input, cur) {
   const data = loadData();
   ensureMonth(data, state.currentMonthKey);
   const md  = data.months[state.currentMonthKey];
-  const cat   = input.dataset.cat;
-  const field = input.dataset.field;
-  const val   = parseFloat(input.value) || 0;
+  const cat = input.dataset.cat;
+  const val = parseFloat(input.value) || 0;
 
-  md.expenses[cat][field] = val;
+  // Seul "planned" est éditable (actual = somme des transactions)
+  if (!md.expenses[cat]) md.expenses[cat] = { planned: 0, actual: 0 };
+  md.expenses[cat].planned = val;
 
   // Recalcul écart en live
-  const e       = md.expenses[cat];
-  const planned = parseFloat(e.planned) || 0;
-  const actual  = parseFloat(e.actual)  || 0;
+  const planned = val;
+  const actual  = calcActualForCategory(md, cat);
   const ecart   = planned - actual;
   const badge   = document.querySelector(`[data-cat="${cat}-ecart"]`);
   if (badge) {
     if (planned > 0 || actual > 0) {
-      badge.textContent  = (ecart >= 0 ? '+' : '') + formatNum(ecart);
-      badge.className    = `ecart-badge ${ecart >= 0 ? 'ecart-ok' : 'ecart-bad'}`;
+      badge.textContent = (ecart >= 0 ? '+' : '') + formatNum(ecart);
+      badge.className   = `ecart-badge ${ecart >= 0 ? 'ecart-ok' : 'ecart-bad'}`;
     } else {
       badge.textContent = '—';
       badge.className   = 'ecart-badge ecart-neutral';
@@ -483,14 +514,9 @@ function updateMonthTotals(md, cur) {
   const liveVars = data.months[state.currentMonthKey]?.revenues?.variables || [];
   const varsTotal = liveVars.reduce((s, v) => s + (parseFloat(v.amount) || 0), 0);
 
-  // Totaux dépenses depuis les inputs
-  let totalPlanned = 0, totalActual = 0;
-  document.querySelectorAll('#expenseRows .expense-row').forEach(row => {
-    const pInput = row.querySelector('[data-field="planned"]');
-    const aInput = row.querySelector('[data-field="actual"]');
-    totalPlanned += parseFloat(pInput?.value) || 0;
-    totalActual  += parseFloat(aInput?.value) || 0;
-  });
+  // Actual = somme des transactions (persistantes)
+  const totalActual = (md?.transactions || [])
+    .reduce((s, tx) => s + (parseFloat(tx.amount) || 0), 0);
 
   const totalRevenues = fixedSalary + varsTotal;
   const balance       = totalRevenues - totalActual;
@@ -527,14 +553,13 @@ function saveMonth() {
   // Salaire
   md.revenues.fixedSalary = parseFloat(document.getElementById('inputSalary').value) || 0;
 
-  // Dépenses depuis les inputs
+  // Sauvegarder les budgets prévisionnels (actual = transactions, pas d'input)
   document.querySelectorAll('#expenseRows .expense-row').forEach(row => {
     const pInput = row.querySelector('[data-field="planned"]');
-    const aInput = row.querySelector('[data-field="actual"]');
-    if (pInput && aInput) {
+    if (pInput) {
       const cat = pInput.dataset.cat;
+      if (!md.expenses[cat]) md.expenses[cat] = { planned: 0, actual: 0 };
       md.expenses[cat].planned = parseFloat(pInput.value) || 0;
-      md.expenses[cat].actual  = parseFloat(aInput.value) || 0;
     }
   });
 
@@ -603,6 +628,132 @@ function deleteVariable(id) {
   renderVariableList(md.revenues.variables, cur);
   updateMonthTotals(md, cur);
   showToast('Revenu supprimé', 'success');
+}
+
+// ─── Transactions — saisie déclarative ─────────────────────────────
+function renderTransactionEntry(data) {
+  const sel = document.getElementById('txCategory');
+  if (!sel) return;
+  // Repeupler seulement si les options ont changé (nouvelles catégories)
+  const cats = getCategories(data);
+  if (sel.options.length !== cats.length) {
+    sel.innerHTML = '';
+    cats.forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c.key;
+      opt.textContent = `${c.icon} ${c.key}`;
+      sel.appendChild(opt);
+    });
+  }
+  // Date par défaut = aujourd'hui
+  const dateInput = document.getElementById('txDate');
+  if (dateInput && !dateInput.value) {
+    dateInput.value = new Date().toISOString().slice(0, 10);
+  }
+}
+
+function renderTransactionList(monthData, cur) {
+  const container = document.getElementById('transactionsList');
+  if (!container) return;
+
+  const txs = [...(monthData.transactions || [])].sort((a, b) => {
+    if (a.date && b.date) return b.date.localeCompare(a.date);
+    return 0;
+  });
+
+  const countEl = document.getElementById('txCount');
+  if (countEl) countEl.textContent = `${txs.length} paiement${txs.length !== 1 ? 's' : ''}`;
+
+  if (txs.length === 0) {
+    container.innerHTML = '<p class="tx-empty">Aucun paiement déclaré ce mois.</p>';
+    return;
+  }
+
+  const data    = loadData();
+  const iconMap = {};
+  getCategories(data).forEach(c => { iconMap[c.key] = c.icon; });
+
+  container.innerHTML = '';
+  txs.forEach(tx => {
+    const icon = iconMap[tx.category] || '📙';
+    const item = document.createElement('div');
+    item.className = 'tx-item';
+    item.innerHTML = `
+      <span class="tx-item-icon">${icon}</span>
+      <div class="tx-item-info">
+        <span class="tx-item-cat">${escHtml(tx.category)}</span>
+        ${tx.label ? `<span class="tx-item-label">${escHtml(tx.label)}</span>` : ''}
+      </div>
+      ${tx.date ? `<span class="tx-item-date">${formatTxDate(tx.date)}</span>` : ''}
+      <span class="tx-item-amount negative">−${fmt(tx.amount, cur)}</span>
+      <button class="btn-delete" data-tx-id="${tx.id}" title="Supprimer">✕</button>
+    `;
+    item.querySelector('.btn-delete').addEventListener('click', () => deleteTransaction(tx.id));
+    container.appendChild(item);
+  });
+}
+
+function formatTxDate(dateStr) {
+  if (!dateStr) return '';
+  const parts = dateStr.split('-');
+  if (parts.length < 3) return dateStr;
+  return `${parts[2]}/${parts[1]}`;
+}
+
+function addTransaction() {
+  const amount   = parseFloat(document.getElementById('txAmount').value) || 0;
+  const category = document.getElementById('txCategory')?.value;
+  const label    = document.getElementById('txLabel').value.trim();
+  const date     = document.getElementById('txDate').value;
+
+  if (amount <= 0) {
+    showToast('Montant invalide (doit être > 0)', 'error');
+    document.getElementById('txAmount').focus();
+    return;
+  }
+  if (!category) {
+    showToast('Veuillez sélectionner une catégorie', 'error');
+    return;
+  }
+
+  const data = loadData();
+  ensureMonth(data, state.currentMonthKey);
+  const md = data.months[state.currentMonthKey];
+
+  md.transactions.push({
+    id:       `tx_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    date:     date || new Date().toISOString().slice(0, 10),
+    label,
+    category,
+    amount,
+  });
+  saveData(data);
+
+  // Réinitialiser montant et libellé — garder catégorie et date
+  document.getElementById('txAmount').value = '';
+  document.getElementById('txLabel').value  = '';
+  document.getElementById('txAmount').focus();
+
+  const cur = data.settings.currency || '€';
+  renderExpenseRows(md, cur);
+  renderTransactionList(md, cur);
+  updateMonthTotals(md, cur);
+  showToast(`✓ −${fmt(amount, cur)} · ${category}`, 'success');
+}
+
+function deleteTransaction(id) {
+  const data = loadData();
+  ensureMonth(data, state.currentMonthKey);
+  const md = data.months[state.currentMonthKey];
+
+  md.transactions = md.transactions.filter(tx => tx.id !== id);
+  saveData(data);
+
+  const cur = data.settings.currency || '€';
+  renderExpenseRows(md, cur);
+  renderTransactionList(md, cur);
+  updateMonthTotals(md, cur);
+  showToast('Paiement supprimé', 'success');
 }
 
 // ═══════════════════════════════════════════════════════
@@ -881,6 +1032,15 @@ function init() {
   // Entrée clavier dans la modal
   document.getElementById('modalVarAmount').addEventListener('keydown', e => {
     if (e.key === 'Enter') confirmVariable();
+  });
+
+  // Transactions — saisie déclarative
+  document.getElementById('btnAddTransaction').addEventListener('click', addTransaction);
+  document.getElementById('txAmount').addEventListener('keydown', e => {
+    if (e.key === 'Enter') addTransaction();
+  });
+  document.getElementById('txLabel').addEventListener('keydown', e => {
+    if (e.key === 'Enter') addTransaction();
   });
 
   // Objectif épargne
